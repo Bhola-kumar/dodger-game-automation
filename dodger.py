@@ -1,5 +1,5 @@
-# dodger_streamer_edition_v4.py
-# V4: Fully Configurable via Config Dict
+# dodger_streamer_edition_v5.py
+# V5: Fast Paced for Shorts/Reels
 
 import pygame
 import random
@@ -343,12 +343,16 @@ def run_game(config, output_file="output.mp4"):
     FPS = config.get('fps', 30)
     DURATION = config.get('duration', 15)
     
+    # NEW SPEED CONFIGS
+    BASE_SPEED = config.get('base_speed', 10.0)    # Default to fast if missing
+    SPEED_RAMP = config.get('speed_ramp', 200.0)   # Default to fast ramp if missing
+    
     SEED = config.get('seed', 12345)
     AI_SKILL = config.get('ai_skill', 1.0)
     THEME = config.get('theme', {'bg': (10, 10, 18), 'grid': (40, 0, 60), 'accent': (0, 255, 255)})
     
     random.seed(SEED)
-    print(f"Starting Game | Res: {WIDTH}x{HEIGHT} | FPS: {FPS} | Duration: {DURATION}s")
+    print(f"Starting Game | Res: {WIDTH}x{HEIGHT} | Speed: {BASE_SPEED} | Duration: {DURATION}s")
     
     # Initialize Pygame (Headless check)
     if os.environ.get("SDL_VIDEODRIVER") == "dummy":
@@ -401,7 +405,7 @@ def run_game(config, output_file="output.mp4"):
     
     frame_count = 0
     score = 0
-    speed = 6.0 * AI_SKILL
+    speed = BASE_SPEED * AI_SKILL # Initialize speed variable
     spawn_timer = 0
     game_over = False
     game_over_timer = 0
@@ -432,9 +436,12 @@ def run_game(config, output_file="output.mp4"):
         pygame.event.pump()
                 
         if not game_over:
-            # Logic
-            speed = (6.0 * AI_SKILL) + (level_mgr.level * 1.5) + (frame_count / 1000.0)
-            mix = min(1.0, max(0.0, (speed - 8.0) / 5.0))
+            # --- SPEED LOGIC UPDATE ---
+            # Speed starts at BASE_SPEED and increases by 1 every 'SPEED_RAMP' frames
+            speed = (BASE_SPEED * AI_SKILL) + (level_mgr.level * 1.5) + (frame_count / SPEED_RAMP)
+            
+            # Dynamic Music Mix based on speed
+            mix = min(1.0, max(0.0, (speed - (BASE_SPEED + 2)) / 5.0))
             chan_music_low.set_volume(1.0 - mix)
             chan_music_high.set_volume(mix)
             

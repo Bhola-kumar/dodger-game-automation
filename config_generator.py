@@ -10,6 +10,10 @@ STATIC_SETTINGS = {
     "height": 854,      # Tall height for phone screens
     "fps": 30,          # 30 FPS (Low CPU usage)
     "max_duration": 15, # Hard cap for video length (seconds)
+    
+    # --- SPEED SETTINGS ---
+    "base_speed": 12.0,   # Initial speed (Higher = Starts faster). Was 6.0.
+    "speed_ramp": 100.0,  # Acceleration (Lower = Speeds up faster). Was 1000.0.
 }
 
 def generate_config():
@@ -20,16 +24,14 @@ def generate_config():
     seed = random.randint(0, 999999)
     
     # Randomize duration (e.g., between 12s and 15s)
-    # Kept short to prevent Render timeouts.
     requested_duration = random.choice([12, 13, 14, 15])
     
     # Enforce the hard cap defined above
     final_duration = min(requested_duration, STATIC_SETTINGS['max_duration'])
     
-    # AI Skill Adjustment for Vertical
-    # Vertical screen = obstacles spawn closer to player = less reaction time.
-    # We slightly increase min skill so the AI doesn't die immediately.
-    ai_skill = round(random.uniform(0.98, 1.1), 2)
+    # AI Skill Adjustment
+    # Since game is faster now, we make AI slightly better to survive
+    ai_skill = round(random.uniform(1.05, 1.2), 2)
     
     # Randomize Theme Colors
     themes = [
