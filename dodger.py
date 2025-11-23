@@ -1,5 +1,5 @@
-# dodger_streamer_edition_v3.py
-# V3: Randomized Gameplay, Enhanced Chat, Expressive Facecam.
+# dodger_streamer_edition_v4.py
+# V4: Fully Configurable via Config Dict
 
 import pygame
 import random
@@ -13,26 +13,24 @@ import tempfile
 from collections import deque
 
 # ===========================
-# CONFIGURATION
+# GLOBAL DEFAULTS 
+# (These will be overwritten by config in run_game)
 # ===========================
-FFMPEG_PATH = r"D:\GitHub\Game\Dodge\dodger-game-automation\ffmpeg-master-latest-win64-gpl-shared\bin\ffmpeg.exe"
-WIDTH, HEIGHT = 1280, 720
-FPS = 60
-
-# Duration settings
-VIDEO_LENGTH_SECONDS = 60
-GAMEOVER_DURATION = 6
-MAX_FRAMES = FPS * VIDEO_LENGTH_SECONDS
-
-# Visuals
-THEME_BG = (10, 10, 18)
-THEME_GRID = (40, 0, 60)
+WIDTH, HEIGHT = 854, 480 
+FPS = 30
 NEON_CYAN = (0, 255, 255)
 NEON_MAGENTA = (255, 0, 255)
 NEON_YELLOW = (255, 220, 0)
 NEON_RED = (255, 50, 50)
 NEON_GREEN = (50, 255, 50)
 NEON_ORANGE = (255, 100, 0)
+
+# Check for headless environment
+if os.environ.get("SDL_VIDEODRIVER") == "dummy":
+    FFMPEG_PATH = "ffmpeg"
+else:
+    # Local Windows path (Keep this if you run locally)
+    FFMPEG_PATH = r"D:\GitHub\Game\Dodge\dodger-game-automation\ffmpeg-master-latest-win64-gpl-shared\bin\ffmpeg.exe"
 
 # ===========================
 # ASSET GENERATION (Audio)
@@ -59,10 +57,11 @@ def generate_tone(filename, freq, dur, vol=0.5, type='sine'):
         f.write(b'WAVEfmt '); f.write(struct.pack('<IHHIIHH', 16, 1, 1, sr, sr * 2, 2, 16))
         f.write(b'data'); f.write(struct.pack('<I', len(data))); f.write(data)
 
-def generate_dynamic_music(path_low, path_high):
+def generate_dynamic_music(path_low, path_high, duration_seconds):
     sr = 44100
     bpm = 140
-    seconds = VIDEO_LENGTH_SECONDS + 20
+    # Generate enough music for the video plus a buffer
+    seconds = duration_seconds + 10
     total_samples = int(seconds * sr)
     beat_samples = int(sr * 60 / bpm)
     roots = [43.65, 51.91, 38.89, 43.65]
@@ -102,6 +101,7 @@ def generate_dynamic_music(path_low, path_high):
 
 class CartoonPlayer:
     def __init__(self):
+        # Use Global HEIGHT
         self.rect = pygame.Rect(100, HEIGHT//2, 50, 50)
         self.y_float = float(self.rect.y)
         self.velocity = 0.0
@@ -199,19 +199,15 @@ class LevelManager:
     def get_color(self):
         return self.colors[(self.level - 1) % len(self.colors)]
 
-# ===========================
-# NEW V3 CLASSES
-# ===========================
-
 class EnhancedChat:
     def __init__(self):
-        self.messages = [] # {user, color, text, y_offset, alpha}
+        self.messages = [] 
         self.users = [
             "NeonNinja", "CyberWolf", "PixelPusher", "GlitchGamer", "RetroRex", 
             "VaporWave", "SynthLord", "BitMaster", "CodeCrusher", "StreamQueen"
         ]
         self.comments_normal = ["Pog", "Nice", "Clean", "Smooth", "Music is vibe", "Hi youtube", "First"]
-        self.comments_hype = ["OMG", "INSANE", "GOD GAMER", "HOW???", "CLIP IT", "POGCHAMP", "🔥🔥🔥"]
+        self.comments_hype = ["OMG", "INSANE", "GOD GAMER", "HOW???", "CLIP IT", "POGCHAMP", "⚡⚡⚡"]
         self.comments_scared = ["monkaS", "Close one", "Sweating", "Careful!", "Heart rate 📈"]
         self.timer = 0
         self.next_msg_time = 0
@@ -239,12 +235,11 @@ class EnhancedChat:
             self.add_message(state)
             
         for m in self.messages:
-            if m['slide'] < 0: m['slide'] += 5 # Slide in
-            if m['alpha'] < 255: m['alpha'] += 15 # Fade in
+            if m['slide'] < 0: m['slide'] += 5 
+            if m['alpha'] < 255: m['alpha'] += 15 
             m['life'] -= 1
 
     def draw(self, surface, x, y):
-        # Background Gradient
         s = pygame.Surface((250, 200), pygame.SRCALPHA)
         for i in range(200):
             pygame.draw.line(s, (0,0,0, int(150 * (i/200))), (0, i), (250, i))
@@ -254,10 +249,8 @@ class EnhancedChat:
         for m in reversed(self.messages):
             if m['life'] <= 0: continue
             
-            # Draw User Icon
             pygame.draw.circle(surface, m['color'], (x + 15 + int(m['slide']), curr_y + 8), 8)
             
-            # Text
             u_surf = self.font.render(m['user'], True, (200, 200, 200))
             t_surf = self.font.render(m['text'], True, (255, 255, 255))
             
@@ -272,21 +265,19 @@ class EnhancedChat:
 
 class ExpressiveFacecam:
     def __init__(self):
-        self.state = 'normal' # normal, scared, hype
+        self.state = 'normal'
         self.color = NEON_CYAN
         self.blink_timer = 0
         self.bob_timer = 0
         self.shake = 0
         
     def update(self, player, obstacles, level_just_up):
-        # Determine State
         self.state = 'normal'
         self.shake = 0
         
         if level_just_up:
             self.state = 'hype'
         else:
-            # Check danger
             p_rect = player.rect.inflate(50, 50)
             for o in obstacles:
                 if p_rect.colliderect(o.rect):
@@ -297,7 +288,6 @@ class ExpressiveFacecam:
         self.bob_timer += 0.2 if self.state == 'normal' else 0.5
 
     def draw(self, surface, x, y):
-        # Frame
         w, h = 160, 120
         pygame.draw.rect(surface, (10, 10, 15), (x, y, w, h))
         
@@ -307,17 +297,13 @@ class ExpressiveFacecam:
         
         pygame.draw.rect(surface, border_col, (x, y, w, h), 3)
         
-        # Avatar
         cx = x + w//2 + self.shake
         cy = y + h + math.sin(self.bob_timer) * 5
         
-        # Body
         pygame.draw.circle(surface, (50, 50, 60), (cx, cy + 20), 40)
-        # Head
         head_y = cy - 30
         pygame.draw.circle(surface, (200, 180, 150), (cx, int(head_y)), 25)
         
-        # Eyes
         self.blink_timer += 1
         blink = False
         if self.state == 'normal' and self.blink_timer > 200:
@@ -326,13 +312,11 @@ class ExpressiveFacecam:
             
         eye_y = int(head_y)
         if self.state == 'scared':
-            # Wide eyes
             pygame.draw.circle(surface, (255, 255, 255), (cx - 8, eye_y), 6)
             pygame.draw.circle(surface, (255, 255, 255), (cx + 8, eye_y), 6)
             pygame.draw.circle(surface, (0,0,0), (cx - 8, eye_y), 2)
             pygame.draw.circle(surface, (0,0,0), (cx + 8, eye_y), 2)
         elif self.state == 'hype':
-            # > < eyes
             pygame.draw.line(surface, (0,0,0), (cx - 10, eye_y - 3), (cx - 4, eye_y + 3), 2)
             pygame.draw.line(surface, (0,0,0), (cx - 10, eye_y + 3), (cx - 4, eye_y - 3), 2)
             pygame.draw.line(surface, (0,0,0), (cx + 4, eye_y - 3), (cx + 10, eye_y + 3), 2)
@@ -344,41 +328,27 @@ class ExpressiveFacecam:
             pygame.draw.circle(surface, (0,0,0), (cx - 7, eye_y), 3)
             pygame.draw.circle(surface, (0,0,0), (cx + 7, eye_y), 3)
 
-        # Headphones
         pygame.draw.arc(surface, border_col, (cx - 28, int(head_y) - 25, 56, 50), 0, 3.14, 4)
         pygame.draw.rect(surface, (30,30,30), (cx - 30, int(head_y) - 5, 10, 20))
         pygame.draw.rect(surface, (30,30,30), (cx + 20, int(head_y) - 5, 10, 20))
-
-# ... imports remain the same ...
-
-# ===========================
-# CONFIGURATION (DEFAULTS)
-# ===========================
-FFMPEG_PATH = r"D:\GitHub\Game\Dodge\dodger-game-automation\ffmpeg-master-latest-win64-gpl-shared\bin\ffmpeg.exe"
-# In a real deployment, FFMPEG_PATH should be just "ffmpeg" if installed in PATH
-if os.environ.get("SDL_VIDEODRIVER") == "dummy":
-    FFMPEG_PATH = "ffmpeg" 
-
-WIDTH, HEIGHT = 1280, 720
-FPS = 60
-
-# ... Asset Generation functions remain the same ...
-
-# ... Classes (CartoonPlayer, Obstacle, etc.) remain the same ...
-# (I will assume the classes are already defined in the file and just wrap the main function)
 
 def run_game(config, output_file="output.mp4"):
     """
     Runs the game with the provided configuration and saves the video.
     """
-    # Extract Config
+    # 1. LOAD CONFIG INTO GLOBALS
+    global WIDTH, HEIGHT, FPS
+    WIDTH = config.get('width', 854)
+    HEIGHT = config.get('height', 480)
+    FPS = config.get('fps', 30)
+    DURATION = config.get('duration', 15)
+    
     SEED = config.get('seed', 12345)
-    DURATION = config.get('duration', 60)
     AI_SKILL = config.get('ai_skill', 1.0)
     THEME = config.get('theme', {'bg': (10, 10, 18), 'grid': (40, 0, 60), 'accent': (0, 255, 255)})
     
     random.seed(SEED)
-    print(f"Starting Game with Seed: {SEED}, Skill: {AI_SKILL}, Duration: {DURATION}s")
+    print(f"Starting Game | Res: {WIDTH}x{HEIGHT} | FPS: {FPS} | Duration: {DURATION}s")
     
     # Initialize Pygame (Headless check)
     if os.environ.get("SDL_VIDEODRIVER") == "dummy":
@@ -395,7 +365,9 @@ def run_game(config, output_file="output.mp4"):
     temp_dir = tempfile.mkdtemp()
     music_low = os.path.join(temp_dir, "bgm_low.wav")
     music_high = os.path.join(temp_dir, "bgm_high.wav")
-    generate_dynamic_music(music_low, music_high) # Uses global func
+    
+    generate_dynamic_music(music_low, music_high, DURATION) 
+    
     sfx_death = os.path.join(temp_dir, "death.wav")
     generate_tone(sfx_death, 150, 0.5, type='saw')
     sfx_level = os.path.join(temp_dir, "level.wav")
@@ -436,7 +408,7 @@ def run_game(config, output_file="output.mp4"):
     level_just_up = False
     
     MAX_FRAMES = FPS * DURATION
-    GAMEOVER_DURATION = 6
+    GAMEOVER_DURATION = 3
     
     cmd = [
         FFMPEG_PATH, "-y",
@@ -490,7 +462,7 @@ def run_game(config, output_file="output.mp4"):
                             chat.add_message('hype')
             obstacles = active_obstacles
             
-            # AI Logic (V2 Style - Continuous)
+            # AI Logic
             target_y = HEIGHT // 2
             visible = [o for o in obstacles if o.rect.right > player.rect.left]
             if visible:
@@ -527,7 +499,7 @@ def run_game(config, output_file="output.mp4"):
         level_just_up = False
         
         # Draw
-        screen.fill(THEME['bg']) # Use Theme
+        screen.fill(THEME['bg']) 
         off = (frame_count * speed) % 50
         for x in range(int(-off), WIDTH, 50): pygame.draw.line(screen, THEME['grid'], (x, 0), (x, HEIGHT))
         for o in obstacles: o.draw(screen)
@@ -576,7 +548,6 @@ def run_game(config, output_file="output.mp4"):
     return output_file
 
 if __name__ == "__main__":
-    # Default run for testing
     import config_generator
     cfg = config_generator.generate_config()
     run_game(cfg, "recording_test.mp4")
