@@ -1,0 +1,9 @@
+.venv
+__pycache__/
+*.pyc
+ffmpeg_build/
+ffmpeg_sources/
+ffmpeg-master-latest-win64-gpl-shared/
+recording_test.mp4
+.DS_Store
+.idea/
