@@ -10,7 +10,10 @@ import sys
 import os
 import time
 import tempfile
+import logging
 from collections import deque
+
+logger = logging.getLogger("app.dodger")
 
 # ===========================
 # GLOBAL DEFAULTS 
@@ -29,8 +32,18 @@ NEON_ORANGE = (255, 100, 0)
 if os.environ.get("SDL_VIDEODRIVER") == "dummy":
     FFMPEG_PATH = "ffmpeg"
 else:
-    # Local Windows path (Keep this if you run locally)
-    FFMPEG_PATH = r"D:\GitHub\Game\Dodge\dodger-game-automation\ffmpeg-master-latest-win64-gpl-shared\bin\ffmpeg.exe"
+    # Try to use system ffmpeg first, fallback to local Windows path if exists
+    import shutil
+    system_ffmpeg = shutil.which("ffmpeg")
+    if system_ffmpeg:
+        FFMPEG_PATH = system_ffmpeg
+    else:
+        # Local Windows path (Keep this if you run locally)
+        local_path = r"D:\GitHub\Game\Dodge\dodger-game-automation\ffmpeg-master-latest-win64-gpl-shared\bin\ffmpeg.exe"
+        if os.path.exists(local_path):
+            FFMPEG_PATH = local_path
+        else:
+            FFMPEG_PATH = "ffmpeg"  # Fallback to system PATH
 
 # ===========================
 # ASSET GENERATION (Audio)
@@ -549,8 +562,12 @@ def run_game(config, output_file="output.mp4"):
         
     if ffmpeg: ffmpeg.stdin.close(); ffmpeg.wait()
     pygame.quit()
-    try: import shutil; shutil.rmtree(temp_dir)
-    except: pass
+    try: 
+        import shutil
+        shutil.rmtree(temp_dir)
+        logger.info(f"Cleaned up temp directory: {temp_dir}")
+    except Exception as e:
+        logger.warning(f"Failed to clean up temp directory {temp_dir}: {e}")
     print(f"Done. Saved {output_file}")
     return output_file
 

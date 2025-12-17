@@ -1,62 +1,153 @@
-from fastapi import FastAPI, BackgroundTasks
-from fastapi.responses import FileResponse
-import config_generator
-import dodger
+import logging
 import os
 import uuid
+import datetime
+from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi.responses import FileResponse, JSONResponse
+
+# Import our custom modules
+import config_generator
+import dodger
+import youtube_uploader
+
+# Setup Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("app")
 
 app = FastAPI()
 
-def remove_file(path: str):
-    """
-    Helper function to remove a file.
-    Used as a background task to clean up video files after they are sent.
-    """
+def validate_environment():
+    """Validates that required environment variables are set."""
+    required_vars = []
+    optional_vars = {
+        "YOUTUBE_PRIVACY_STATUS": "public",
+        "PORT": "10000"
+    }
+    
+    # Check YouTube vars only if upload functionality is needed
+    # (Not required for /generate_video endpoint)
+    youtube_vars = ["YT_REFRESH_TOKEN", "YT_CLIENT_ID", "YT_CLIENT_SECRET"]
+    
+    missing = []
+    for var in required_vars:
+        if not os.environ.get(var):
+            missing.append(var)
+    
+    if missing:
+        logger.warning(f"Missing optional environment variables: {missing}")
+    
+    # Log configuration
+    logger.info("Environment validation complete")
+    logger.info(f"YouTube privacy status: {os.environ.get('YOUTUBE_PRIVACY_STATUS', 'public')}")
+    
+    return True
+
+# Validate environment on startup
+validate_environment()
+
+def cleanup_file(path: str):
+    """Deletes the temporary file after use."""
     try:
         if os.path.exists(path):
             os.remove(path)
-            print(f"Successfully removed temp file: {path}")
+            logger.info(f"Deleted temp file: {path}")
     except Exception as e:
-        print(f"Error removing file {path}: {e}")
+        logger.error(f"Error deleting file {path}: {e}")
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "DodgerGen"}
 
 @app.post("/generate_video")
 async def generate_video(background_tasks: BackgroundTasks):
     """
-    Generates a unique gameplay video.
+    Legacy endpoint: Just generates the video and lets you download it.
     """
-    # 1. Generate Config
     config = config_generator.generate_config()
-    
-    # 2. Define Output Path
-    # We use /tmp because it is the standard temp location on Linux/Render.
-    # It avoids permission issues and keeps your app directory clean.
     filename = f"video_{uuid.uuid4()}.mp4"
     output_path = os.path.join("/tmp", filename)
     
-    # Ensure directory exists (just in case)
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    
-    # 3. Run Game
-    # Note: In a high-traffic app, this blocking call should eventually 
-    # be offloaded to a separate worker queue (like Celery), but this works for now.
     try:
         dodger.run_game(config, output_path)
     except Exception as e:
-        return {"error": f"Game generation failed: {str(e)}"}
+        logger.error(f"Generation failed: {e}")
+        # Clean up even if generation fails
+        cleanup_file(output_path)
+        return JSONResponse(status_code=500, content={"error": "Game generation failed", "details": str(e)})
     
-    # 4. Schedule Cleanup
-    # This instructs FastAPI to run 'remove_file' AFTER the response is fully sent.
-    background_tasks.add_task(remove_file, output_path)
-    
-    # 5. Return File
+    background_tasks.add_task(cleanup_file, output_path)
     return FileResponse(output_path, media_type="video/mp4", filename=filename)
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+@app.post("/generate_and_upload")
+async def generate_and_upload(background_tasks: BackgroundTasks):
+    """
+    THE MAGIC ENDPOINT:
+    1. Generates a new Dodger gameplay video.
+    2. Uploads it directly to YouTube Shorts.
+    3. Cleans up.
+    """
+    logger.info("Starting automated workflow...")
+    
+    # 1. Generate Config
+    config = config_generator.generate_config()
+    
+    # 2. Setup Paths
+    filename = f"dodger_short_{uuid.uuid4()}.mp4"
+    output_path = os.path.join("/tmp", filename)
+    
+    # 3. Generate Video
+    try:
+        logger.info("Generating video content...")
+        dodger.run_game(config, output_path)
+    except Exception as e:
+        logger.error(f"Generation failed: {e}")
+        # Clean up even if generation fails
+        cleanup_file(output_path)
+        return JSONResponse(status_code=500, content={"error": "Game generation failed", "details": str(e)})
+
+    # 4. Upload to YouTube
+    video_id = None
+    video_url = None
+    try:
+        # Create a catchy title based on the day
+        today = datetime.datetime.now().strftime("%Y-%m-%d")
+        title = f"Insane Dodger Gameplay {today} #Shorts"
+        
+        description = (
+            "Can the AI survive this level? 😱\n\n"
+            "Generated by Python Code.\n"
+            "#gaming #coding #python #pygame #shorts"
+        )
+        
+        logger.info("Uploading to YouTube...")
+        # Make privacy status configurable via environment variable
+        privacy_status = os.environ.get("YOUTUBE_PRIVACY_STATUS", "public")
+        video_id = youtube_uploader.upload_video(
+            file_path=output_path,
+            title=title,
+            description=description,
+            privacy_status=privacy_status
+        )
+        video_url = f"https://youtu.be/{video_id}"
+        logger.info(f"Upload successful! URL: {video_url}")
+        
+    except Exception as e:
+        logger.error(f"Upload failed: {e}")
+        # Clean up even if upload fails
+        cleanup_file(output_path)
+        return JSONResponse(status_code=500, content={"error": "YouTube upload failed", "details": str(e)})
+
+    # 5. Cleanup
+    background_tasks.add_task(cleanup_file, output_path)
+    
+    return {
+        "status": "success",
+        "action": "generated_and_uploaded",
+        "video_id": video_id,
+        "url": video_url
+    }
 
 if __name__ == "__main__":
     import uvicorn
-    # Render sets the PORT env variable; default to 8080 if not set.
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
