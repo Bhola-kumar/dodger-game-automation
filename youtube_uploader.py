@@ -1,9 +1,13 @@
 import os
 import time
 import logging
+from dotenv import load_dotenv
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+
+# Load environment variables from .env file
+load_dotenv()
 
 logger = logging.getLogger("app.uploader")
 

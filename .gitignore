@@ -4,6 +4,8 @@ __pycache__/
 ffmpeg_build/
 ffmpeg_sources/
 ffmpeg-master-latest-win64-gpl-shared/
-recording_test.mp4
+*.mp4
+.env
 .DS_Store
 .idea/
+client_secret.json
